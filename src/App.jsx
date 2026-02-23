@@ -9,7 +9,7 @@ import emailjs from "@emailjs/browser";
 
 const EMAILJS_SERVICE_ID  = "service_x3w4ywg";   
 const EMAILJS_TEMPLATE_ID = "template_sfmvrhm";  
-const EMAILJS_PUBLIC_KEY  = "NLmfT8nbqVRQyw5Oi";   
+const EMAILJS_PUBLIC_KEY  = "BfVGl-GngI4I1TePo1I4f";   
 
 
 const WA_NUMBER = "2347042519585"; 
@@ -152,7 +152,7 @@ export default function OdunsPlace() {
           note:       formData.note || "None",
           reply_to:   formData.email,
         },
-        { publicKey: EMAILJS_PUBLIC_KEY }
+       
       );
 
       setSubmitted(true);
