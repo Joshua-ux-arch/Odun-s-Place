@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import './App.css'
+import emailjs from "@emailjs/browser";
 
 
 
@@ -74,6 +75,10 @@ export default function OdunsPlace() {
   const refs = useRef({});
 
   useEffect(() => {
+    emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  }, []);
+
+  useEffect(() => {
     const onScroll = () => setNavSolid(window.scrollY > 60);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -121,43 +126,53 @@ export default function OdunsPlace() {
     setErrors(prev => ({ ...prev, [field]: errs[field] }));
   };
 
-  const handleSubmit = e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     setTouched({ name: true, email: true, phone: true, date: true });
     const errs = validate(formData);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
+    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      alert("Reservation email is not configured yet. Please contact support.");
+      return;
+    }
 
     setLoading(true);
+    try {
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          from_name:  formData.name,
+          from_email: formData.email,
+          phone:      formData.phone,
+          date:       formData.date,
+          guests:     formData.guests,
+          note:       formData.note || "None",
+          reply_to:   formData.email,
+        },
+        { publicKey: EMAILJS_PUBLIC_KEY }
+      );
 
-    emailjs.send(
-      EMAILJS_SERVICE_ID,
-      EMAILJS_TEMPLATE_ID,
-      {
-        from_name:  formData.name,
-        from_email: formData.email,
-        phone:      formData.phone,
-        date:       formData.date,
-        guests:     formData.guests,
-        note:       formData.note || "None",
-        reply_to:   formData.email,
-      },
-      EMAILJS_PUBLIC_KEY
-    )
-    .then(() => {
-      setLoading(false);
       setSubmitted(true);
       setFormData({ name: "", email: "", phone: "", date: "", guests: "2", note: "" });
       setErrors({});
       setTouched({});
       setTimeout(() => setSubmitted(false), 8000);
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error("EmailJS error:", err);
+      const status = err?.status;
+      const detail = err?.text || err?.message || "Unknown error";
+      let reason = detail;
+      if (status === 401) reason = "invalid EmailJS public key";
+      if (status === 404) reason = "service ID or template ID not found";
+      if (status === 403) reason = "domain/origin is not allowed in EmailJS";
+      if (status === 429) reason = "rate limit reached, try again shortly";
+      alert(`Could not send reservation (${reason}). Please call us directly on +${WA_NUMBER} or message us on WhatsApp.`);
+    } finally {
       setLoading(false);
-      alert(`Something went wrong sending your reservation. Please call us directly on +${WA_NUMBER} or message us on WhatsApp.`);
-    });
+    }
   };
 
   return (
