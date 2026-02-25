@@ -12,7 +12,7 @@ const EMAILJS_TEMPLATE_ID = "template_sfmvrhm";
 const EMAILJS_PUBLIC_KEY  = "NLmfT8nbqVRQyw5Oi";   
 
 
-const WA_NUMBER = "2347042519585"; 
+const WA_NUMBER = "2348136741644"; 
 
 
 const IMGS = {
