@@ -133,6 +133,19 @@ export default function App() {
   /* ── UI state ── */
   const [menuTab,    setMenuTab]    = useState("food");
   const [liveMenu,   setLiveMenu]   = useState(MENU);
+  const [darkMode,   setDarkMode]   = useState(() => {
+    // Read preference cookie — default is dark
+    const c = document.cookie.split(";").find(c => c.trim().startsWith("oduns_theme="));
+    return c ? c.split("=")[1].trim() === "dark" : true;
+  });
+
+  const toggleTheme = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    // Save preference cookie for 1 year
+    const expires = new Date(Date.now() + 365*24*60*60*1000).toUTCString();
+    document.cookie = "oduns_theme=" + (next?"dark":"light") + "; expires=" + expires + "; path=/; SameSite=Lax";
+  };
   const [navSolid,   setNavSolid]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeReview, setActiveReview] = useState(0);
@@ -400,7 +413,7 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <div className="app">
+      <div className={"app" + (darkMode ? "" : " app--light")}>
 
         {/* WHATSAPP BUBBLE */}
         <a href={"https://wa.me/" + WA_NUMBER} target="_blank" rel="noopener noreferrer" className="wa-bubble" aria-label="WhatsApp">
@@ -425,6 +438,9 @@ export default function App() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.63 19.79 19.79 0 01.22 1.05 2 2 0 012.22 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
             +234 704 251 9585
           </a>
+          <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme" title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}>
+            {darkMode ? "☀️" : "🌙"}
+          </button>
           <button className="cart-nav-btn" onClick={() => setCartOpen(true)} aria-label="Cart">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
             {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
@@ -900,7 +916,29 @@ html { scroll-behavior: smooth; }
   --cream: #F3E8D8; --cream2: rgba(243,232,216,0.72); --cream3: rgba(243,232,216,0.38);
   --serif: 'Cormorant', Georgia, serif; --sans: 'Outfit', system-ui, sans-serif;
 }
-.app { background: var(--ink); color: var(--cream); overflow-x: hidden; }
+.app { background: var(--ink); color: var(--cream); overflow-x: hidden; transition: background .3s, color .3s; }
+.app--light {
+  --ink: #faf7f4; --ink2: #f0ebe3; --orange: #D94500; --orange2: #E8520A;
+  --cream: #1a0f08; --cream2: rgba(26,15,8,0.75); --cream3: rgba(26,15,8,0.45);
+}
+.app--light .nav { border-bottom-color: rgba(217,69,0,0.15); }
+.app--light .nav--on { background: rgba(250,247,244,0.97); }
+.app--light .hero-scrim { background: linear-gradient(to bottom, rgba(250,247,244,0.1) 0%, rgba(250,247,244,0.05) 35%, rgba(250,247,244,0.5) 68%, rgba(250,247,244,0.97) 100%); }
+.app--light .story { background: var(--ink2); }
+.app--light .menu-sec { background: var(--ink); }
+.app--light .dish { background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.app--light .dish-name { color: #1a0f08; }
+.app--light .dish-desc { color: rgba(26,15,8,0.5); }
+.app--light .reviews-sec { background: var(--ink2); }
+.app--light .rc-text { color: #1a0f08; }
+.app--light .footer { background: #f0ebe3; border-top-color: rgba(217,69,0,0.12); }
+.app--light .cart-drawer { background: #fff; }
+.app--light .cd-item { background: rgba(217,69,0,0.04); border-color: rgba(217,69,0,0.1); }
+.app--light .ck-modal { background: #fff; }
+.app--light .mob-nav { background: rgba(250,247,244,0.99); }
+.app--light .mob-a { color: #1a0f08; }
+.theme-toggle-btn { background: none; border: 1px solid rgba(232,82,10,0.3); color: var(--cream2); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: border-color .2s, transform .2s; }
+.theme-toggle-btn:hover { border-color: var(--orange); transform: scale(1.1); }
 .wa-bubble { position: fixed; bottom: 26px; right: 26px; z-index: 9999; width: 50px; height: 50px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 18px rgba(37,211,102,0.45); transition: transform .2s; text-decoration: none; }
 .wa-bubble:hover { transform: scale(1.1); }
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; padding: 22px 52px; transition: background .3s, padding .3s, border-color .3s; border-bottom: 1px solid transparent; gap: 16px; }
