@@ -163,6 +163,8 @@ export default function App() {
   /* ── Cart & checkout state ── */
   const [cart,          setCart]          = useState([]);
   const [cartOpen,      setCartOpen]      = useState(false);
+  const [waOrderUrl,    setWaOrderUrl]    = useState("");
+  const waOrderRef = useRef(""); // ref so callbacks can read it instantly without re-render
   const [checkoutStep,  setCheckoutStep]  = useState(0);
   const [deliveryType,  setDeliveryType]  = useState("pickup");
   const [deliveryAddr,  setDeliveryAddr]  = useState("");
@@ -184,7 +186,12 @@ export default function App() {
   };
   const removeFromCart = (id) => setCart(prev => prev.filter(i => i.id !== id));
   const updateQty = (id, delta) => setCart(prev =>
-    prev.map(i => i.id === id ? { ...i, qty: Math.max(1, i.qty + delta) } : i)
+    prev.reduce((acc, i) => {
+      if (i.id !== id) return [...acc, i];
+      const newQty = i.qty + delta;
+      if (newQty < 1) return acc; // remove item entirely when going below 1
+      return [...acc, { ...i, qty: newQty }];
+    }, [])
   );
   const cartCount   = cart.reduce((s, i) => s + i.qty, 0);
   const subtotal    = cart.reduce((s, i) => s + i.amount * i.qty, 0);
@@ -192,20 +199,43 @@ export default function App() {
   const total       = subtotal + deliveryFee;
 
   /* ── Order helpers ── */
+  const buildWaUrl = (paystackRef) => {
+    // Build a properly encoded WhatsApp message
+    const lines = [
+      "🛒 *NEW ORDER — Odun's Place*",
+      "",
+      "*Name:* " + orderName,
+      "*Phone:* " + orderPhone,
+      orderEmail ? "*Email:* " + orderEmail : null,
+      "*Delivery:* " + (deliveryType === "delivery" ? "Delivery to " + deliveryAddr : "Pickup"),
+      "*Payment:* " + (paystackRef ? "✅ PAID via Paystack — Ref: " + paystackRef : payMethod.toUpperCase()),
+      "",
+      "*Items:*",
+      ...cart.map(i => "  • " + i.qty + "x " + i.name + " (" + fmt(i.amount * i.qty) + ")"),
+      "",
+      "*TOTAL: " + fmt(total) + "*",
+    ].filter(l => l !== null).join("\n");
+
+    return "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent(lines);
+  };
+
   const buildSummary = (paystackRef) => {
-    const items = cart.map(i => i.qty + "x " + i.name + " (" + fmt(i.amount * i.qty) + ")").join(", ");
-    const dtype = deliveryType === "delivery" ? "Delivery to: " + deliveryAddr : "Pickup";
-    const pay   = paystackRef ? "PAID via Paystack Ref:" + paystackRef : payMethod;
-    return "Name:" + orderName + " | Phone:" + orderPhone + " | " + dtype + " | Payment:" + pay + " | " + items + " | TOTAL:" + fmt(total);
+    // Store WA URL in both ref (for immediate callback use) and state (for React render)
+    const url = buildWaUrl(paystackRef);
+    waOrderRef.current = url;
+    setWaOrderUrl(url);
+    // Return plain text for email
+    return "Name:" + orderName + " | Phone:" + orderPhone + " | " + (deliveryType==="delivery"?"Delivery:"+deliveryAddr:"Pickup") + " | Payment:" + (paystackRef?"PAID Paystack "+paystackRef:payMethod) + " | Items:" + cart.map(i=>i.qty+"x "+i.name).join(", ") + " | TOTAL:" + fmt(total);
   };
 
   const sendConfirmation = async (summary) => {
-    const msg = encodeURIComponent("NEW ORDER - Odun's Place | " + summary);
-    window.open("https://wa.me/" + WA_NUMBER + "?text=" + msg, "_blank");
+    // Never call window.open here — it gets blocked by browsers when called from async/callback.
+    // Instead the success screen has a direct <a href> WhatsApp link the user taps.
+    // Send email confirmation silently in background.
     try {
       await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
         from_name: orderName, from_email: orderEmail || "order@oduns.place",
-        phone: orderPhone, date: "Order", guests: "N/A",
+        phone: orderPhone, date: new Date().toLocaleString("en-NG"), guests: "N/A",
         note: summary, reply_to: orderEmail || "order@oduns.place",
       });
     } catch (_) {}
@@ -213,8 +243,12 @@ export default function App() {
 
   const placeOrder = async () => {
     if (!orderName.trim() || !orderPhone.trim()) return;
+    // Build WA URL first and open WhatsApp NOW — directly from the click handler
+    // This is the only reliable way to open WhatsApp on mobile without being blocked
+    const summary = buildSummary(null); // sets waOrderRef.current and waOrderUrl
+    window.open(waOrderRef.current, "_blank"); // called synchronously in click = never blocked
     setOrderLoading(true);
-    await sendConfirmation(buildSummary(null));
+    await sendConfirmation(summary); // email only, runs in background
     setOrderLoading(false);
     setCart([]);
     setCartOpen(false);
@@ -247,7 +281,10 @@ export default function App() {
         lastName: orderName.split(" ").slice(1).join(" ") || "-",
         phone: orderPhone.trim(),
         onSuccess: (transaction) => {
-          sendConfirmation(buildSummary(transaction.reference));
+          const summary = buildSummary(transaction.reference);
+          // Open WhatsApp immediately — Paystack onSuccess runs synchronously on user action
+          window.open(waOrderRef.current, "_blank");
+          sendConfirmation(summary);
           setCart([]);
           setCartOpen(false);
           setCheckoutStep(3);
@@ -264,7 +301,9 @@ export default function App() {
           currency: "NGN",
           ref: "ODP_" + Date.now(),
           callback: (response) => {
-            sendConfirmation(buildSummary(response.reference));
+            const summary = buildSummary(response.reference);
+            window.open(waOrderRef.current, "_blank");
+            sendConfirmation(summary);
             setCart([]);
             setCartOpen(false);
             setCheckoutStep(3);
@@ -439,7 +478,7 @@ export default function App() {
             +234 704 251 9585
           </a>
           <button className="theme-toggle-btn" onClick={toggleTheme} aria-label="Toggle theme" title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-            {darkMode ? "☀️" : "🌙"}
+            <span className="theme-icon">{darkMode ? "🌞" : "🌑"}</span>
           </button>
           <button className="cart-nav-btn" onClick={() => setCartOpen(true)} aria-label="Cart">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
@@ -766,10 +805,12 @@ export default function App() {
                       <p className="cd-item-price">{fmt(item.amount * item.qty)}</p>
                     </div>
                     <div className="cd-item-controls">
-                      <button className="cd-qty-btn" onClick={() => updateQty(item.id, -1)}>−</button>
+                      <button className="cd-qty-btn cd-qty-minus" onClick={() => updateQty(item.id, -1)} title={item.qty === 1 ? "Remove item" : "Decrease quantity"}>
+                        {item.qty === 1 ? "🗑" : "−"}
+                      </button>
                       <span className="cd-qty">{item.qty}</span>
                       <button className="cd-qty-btn" onClick={() => updateQty(item.id, 1)}>+</button>
-                      <button className="cd-remove" onClick={() => removeFromCart(item.id)}>✕</button>
+                      <button className="cd-remove" onClick={() => removeFromCart(item.id)} title="Remove item">✕</button>
                     </div>
                   </div>
                 ))}
@@ -896,8 +937,16 @@ export default function App() {
             <div className="ck-modal ck-success-modal" onClick={e => e.stopPropagation()}>
               <div className="ck-success-icon">🍽️</div>
               <h3 className="ck-success-title">Order Placed!</h3>
-              <p className="ck-success-msg">Your order has been sent to us on WhatsApp. We'll confirm and give you an ETA shortly.</p>
-              <button className="ck-next" style={{marginTop:"28px",width:"100%"}} onClick={() => setCheckoutStep(0)}>Done</button>
+              <p className="ck-success-msg">Thank you, {orderName}! WhatsApp should have opened with your order details. If it didn't, tap the button below to send it now.</p>
+              <a
+                href={waOrderUrl || ("https://wa.me/" + WA_NUMBER)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ck-wa-send-btn"
+              >
+                📲 Send Order on WhatsApp
+              </a>
+              <button className="ck-back" style={{marginTop:"14px",width:"100%",textAlign:"center"}} onClick={() => setCheckoutStep(0)}>Done</button>
             </div>
           </div>
         )}
@@ -937,8 +986,9 @@ html { scroll-behavior: smooth; }
 .app--light .ck-modal { background: #fff; }
 .app--light .mob-nav { background: rgba(250,247,244,0.99); }
 .app--light .mob-a { color: #1a0f08; }
-.theme-toggle-btn { background: none; border: 1px solid rgba(232,82,10,0.3); color: var(--cream2); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: border-color .2s, transform .2s; }
-.theme-toggle-btn:hover { border-color: var(--orange); transform: scale(1.1); }
+.theme-toggle-btn { background: rgba(232,82,10,0.08); border: 1px solid rgba(232,82,10,0.2); width: 38px; height: 38px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .2s; padding: 0; flex-shrink: 0; }
+.theme-toggle-btn:hover { background: rgba(232,82,10,0.18); border-color: rgba(232,82,10,0.4); transform: rotate(20deg); }
+.theme-icon { font-size: 17px; line-height: 1; display: block; }
 .wa-bubble { position: fixed; bottom: 26px; right: 26px; z-index: 9999; width: 50px; height: 50px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 18px rgba(37,211,102,0.45); transition: transform .2s; text-decoration: none; }
 .wa-bubble:hover { transform: scale(1.1); }
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; display: flex; align-items: center; justify-content: space-between; padding: 22px 52px; transition: background .3s, padding .3s, border-color .3s; border-bottom: 1px solid transparent; gap: 16px; }
@@ -1135,8 +1185,9 @@ html { scroll-behavior: smooth; }
 .cd-qty-btn { background: rgba(232,82,10,0.12); border: none; color: var(--cream); width: 26px; height: 26px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .2s; }
 .cd-qty-btn:hover { background: var(--orange); color: var(--ink); }
 .cd-qty { font-family: var(--sans); font-size: 14px; font-weight: 600; color: var(--cream); min-width: 18px; text-align: center; }
-.cd-remove { background: none; border: none; color: rgba(243,232,216,0.3); font-size: 12px; cursor: pointer; padding: 4px; transition: color .2s; margin-left: 4px; }
-.cd-remove:hover { color: #fc8181; }
+.cd-remove { background: rgba(229,62,62,0.1); border: 1px solid rgba(229,62,62,0.25); color: #fc8181; font-size: 12px; cursor: pointer; padding: 5px 9px; transition: all .2s; border-radius: 4px; margin-left: 4px; font-weight: 700; }
+.cd-remove:hover { background: #e53e3e; border-color: #e53e3e; color: #fff; }
+.cd-qty-minus { font-size: 14px; }
 .cd-footer { padding: 20px 24px; border-top: 1px solid rgba(232,82,10,0.12); }
 .cd-subtotal-row { display: flex; justify-content: space-between; font-family: var(--sans); font-size: 14px; color: var(--cream2); margin-bottom: 16px; }
 .cd-checkout-btn { width: 100%; background: var(--orange); border: none; color: var(--ink); font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 15px; cursor: pointer; transition: background .2s; }
@@ -1192,7 +1243,9 @@ html { scroll-behavior: smooth; }
 .ck-success-modal { text-align: center; padding: 52px 40px; }
 .ck-success-icon { font-size: 52px; margin-bottom: 18px; }
 .ck-success-title { font-family: var(--serif); font-size: 36px; font-weight: 700; color: var(--cream); margin-bottom: 14px; }
-.ck-success-msg { font-family: var(--sans); font-size: 15px; color: var(--cream2); line-height: 1.7; }
+.ck-success-msg { font-family: var(--sans); font-size: 15px; color: var(--cream2); line-height: 1.7; margin-bottom: 22px; }
+.ck-wa-send-btn { display: inline-flex; align-items: center; gap: 10px; background: #25D366; color: #fff; font-family: var(--sans); font-size: 15px; font-weight: 700; padding: 14px 32px; border-radius: 8px; text-decoration: none; transition: background .2s, transform .15s; letter-spacing: .3px; }
+.ck-wa-send-btn:hover { background: #1ebe5a; transform: scale(1.02); }
 @media (max-width: 1024px) { .dishes-grid { grid-template-columns: repeat(2,1fr); } .gal-grid { grid-template-columns: repeat(2,1fr); grid-template-rows: auto; } .gal-tall, .gal-wide { grid-row: span 1; grid-column: span 1; } }
 @media (max-width: 768px) {
   .nav { padding: 18px 24px; } .nav--on { padding: 12px 24px; } .nav-ul, .nav-phone { display: none; } .burger { display: flex; }
